@@ -2,6 +2,7 @@ import os
 import requests
 from langchain.tools import tool
 from dotenv import load_dotenv
+from datetime import datetime
 
 load_dotenv('../../.env')
 
@@ -97,20 +98,24 @@ def get_current_weather(city: str, country: str = None):
         }
 
 @tool
-def get_weather_forecast(city: str, country: str = None):
+def get_3_day_forecast(city: str, country: str = None):
+    """
+    Retrieves a 3-day weather forecast for a specific city.
+    Use this tool when users ask about future weather, weekend plans, or 'the next few days'.
+    
+    Args:
+        city (str): The name of the city.
+        country (str, optional): 2-letter country code (ISO 3166).
+    """
     api_key = os.getenv("WEATHER_API_KEY")
-
-    lat_data = get_city_lat_lon(city=city, country=country,api_key=api_key)
+    lat_data = get_city_lat_lon(city=city, country=country, api_key=api_key)
 
     if not lat_data:
-        return {
-            "status": "error",
-            "message": f"Could not find coordinates for {city}.",
-            "city": city
-        }
+        return {"status": "error", "message": f"Location '{city}' not found."}
     
     lat, lon = lat_data["lat"], lat_data["lon"]
 
+    url = "https://api.openweathermap.org/data/2.5/forecast"
     params = {
         "lat": lat,
         "lon": lon,
@@ -118,4 +123,41 @@ def get_weather_forecast(city: str, country: str = None):
         "units": "metric"
     }
 
-    return None
+    try:
+        response = requests.get(url, params=params)
+        response.raise_for_status()
+        data = response.json()
+
+        forecast_list = []
+        seen_dates = set()
+
+        for entry in data.get("list", []):
+            dt_object = datetime.fromtimestamp(entry["dt"])
+            date_str = dt_object.strftime("%Y-%m-%d")
+            hour = dt_object.hour
+
+            if date_str not in seen_dates and hour >= 12:
+                forecast_list.append({
+                    "date": date_str,
+                    "temp": f"{entry['main']['temp']}°C",
+                    "description": entry['weather'][0]['description'],
+                    "humidity": f"{entry['main']['humidity']}%"
+                })
+                seen_dates.add(date_str)
+            
+            if len(forecast_list) == 3:
+                break
+
+        return {
+            "status": "success",
+            "city": lat_data["name"],
+            "country": lat_data["country"],
+            "forecast": forecast_list
+        }
+
+    except requests.exceptions.RequestException as e:
+        
+        return {
+            "status": "error",
+            "message": str(e)
+        }
