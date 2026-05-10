@@ -6,3 +6,6 @@ google-auth-httplib2
 google-auth-oauthlib
 python-dateutil
 perplexityai
+langgraph
+langchain-google-genai
+
